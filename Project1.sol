@@ -12,10 +12,12 @@ import "@openzeppelin/contracts/utils/Strings.sol";
  */
 contract Voting is Ownable {
 
-    uint sessionId = 1; 
-    uint proposalId = 1;
+    uint sessionId = 1;         //Id of the session
+    uint proposalId = 1;        //Id of the proposal
     uint winningProposalId;     //can be checked when votes tallied is done
     uint highestVoteCount;      //used for the vote count
+
+    uint[] voteCount;
 
     mapping(address => bool) votelistAddress;
 
@@ -54,12 +56,11 @@ contract Voting is Ownable {
     event ProposalRegistered(uint proposalId);
     event Voted (address voter, uint proposalId);
 
-    uint[] voteCount;
-
     /** 
-     * @dev allow the adminsitrator to go to the next workflowstatus, he is oblige to follow the process
-     * if new session, we increment it
-     * and a event is emited
+     * @dev allow the adminsitrator to go to the next workflowstatus, he is obliged to follow the process
+     * if new session, we increment it 
+     * firstProposalId, lastProposalId and highestVoteCount are used to manange the vote
+     * an event is emited for each status changing
      */
     function nextWorkflowStatus() public onlyOwner {
         previousStatus = workflowStatusState;
@@ -87,8 +88,8 @@ contract Voting is Ownable {
     }
 
     /*
-     * @dev get the Id of the actual winner
-     * @param returns : winning id
+     * @dev get the proposal which won
+     * @param returns : string : concat of id and description of the proposal
      */ 
     function getWinner () public view returns (string memory) {
         require (workflowStatusState==WorkflowStatus.VotesTallied,"you have to wait for the counting vote");
@@ -100,7 +101,7 @@ contract Voting is Ownable {
     }
 
      /*
-     * @dev The admin prepare the Voterlist
+     * @dev The admin adding the voters in the voter list
      * @param _address : address of the voter
      */ 
     function votelist (address _address) public onlyOwner {
@@ -111,7 +112,7 @@ contract Voting is Ownable {
     }
 
      /*
-     * @dev The voter add a proposal durinf the the Proposal Registration period
+     * @dev The voter add a proposal during the the Proposal Registration period
      * mapping with the Session and the proposal 
      * @param _description : desciption of the proposal
      */   
@@ -148,8 +149,6 @@ contract Voting is Ownable {
     function vote (uint _proposalId) public {
         require(workflowStatusState==WorkflowStatus.VotingSessionStarted, "The proposal Resgistrate period didn't started");
         require(votelistAddress[msg.sender],"Your address is not in the vote list");
-
-        //Voter
         require(sessionId == linkSessionAndProposal[_proposalId], "This proposal Id doesn't exist or is an Id of a previous session");
         require(!voters[sessionId][msg.sender].hasVoted, "You already voted");
 
@@ -162,16 +161,16 @@ contract Voting is Ownable {
         if (proposals[sessionId][_proposalId].voteCount > highestVoteCount) {
             highestVoteCount = proposals[sessionId][_proposalId].voteCount;
         }
-        //if equality we check the timestamp
+        //if we have an equality we will check the timestamp
         voteTimeStamp[_proposalId] = block.timestamp;
 
         emit Voted (msg.sender, _proposalId);
     }
 
      /*
-     * @dev To have the winning proposal of the actual session. the function is processed automatically by changing the WorkflowStatus
+     * @dev To have the winning proposal of the actual session. The function is processed automatically by changing the WorkflowStatus
      * lastProposalId is not attribuated so it's '<' in the For
-     * Set the state vraible : winningProposalId
+     * Set the state variable : winningProposalId
      */  
     function whoWin() public onlyOwner {
         require (workflowStatusState==WorkflowStatus.VotesTallied,"We are not counting the vote now");
@@ -191,7 +190,7 @@ contract Voting is Ownable {
     }
 
      /*
-     * @dev To have the winning proposal if equality. the function is processed automatically by changing the WorkflowStatus
+     * @dev To have the winning proposal if equality. The function is processed automatically by changing the WorkflowStatus
      * The proposal which has the smallest timestamp win
      * @param return : winning proposal
      */  
@@ -214,9 +213,9 @@ contract Voting is Ownable {
     }
 
      /*
-     * @dev everyone know wich proposal was voted by who
-     * @param return : string, concatenation of id and description
+     * @dev everyone know wich proposal was voted by who (actual ond old session)
      * "didn't vote yet" mean that we are at the beginnig of a session so the address couldn't vote 
+     * @param return : string, concatenation of id and description
      */  
     function whoVotedWhat (address _address) public view returns (string memory) {
         require (votelistAddress[_address],"This address is not in registered");
@@ -226,7 +225,7 @@ contract Voting is Ownable {
             if (voters[i][_address].hasVoted) {
                 concatString = string.concat(concatString," Session ", Strings.toString(i) ," Voted for proposalId : ",Strings.toString(voters[i][_address].votedProposalId), " - ",proposals[i][voters[i][_address].votedProposalId].description,";");
             } else {
-                if (i==sessionId && (workflowStatusState != WorkflowStatus.VotesTallied)) {
+                if (i==sessionId && (workflowStatusState != WorkflowStatus.VotesTallied || workflowStatusState != WorkflowStatus.VotingSessionEnded)) {
                     concatString = string.concat(concatString," Session ", Strings.toString(i) ," didn't vote yet");
                 } else {
                     concatString = string.concat(concatString," Session ", Strings.toString(i) ," didn't vote");
@@ -235,6 +234,5 @@ contract Voting is Ownable {
         }
         return concatString;
     }
-
 
 }
